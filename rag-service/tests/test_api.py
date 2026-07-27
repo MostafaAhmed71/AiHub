@@ -8,9 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.config import get_settings
 from app.db.session import get_db
 from app.models.schemas import QueryResponse
 from app.api.rag import get_rag_service
+
+TEST_API_KEY = "test-rag-api-key-123"
 
 
 class FakeResult:
@@ -33,7 +36,6 @@ class FakeSession:
         self._prompt = None
 
     async def execute(self, _stmt):
-        # list returns empty; get returns stored prompt
         if self._prompt:
             return FakeResult(self._prompt)
         return FakeResult([])
@@ -66,7 +68,10 @@ class FakeSession:
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    monkeypatch.setenv("RAG_SERVICE_API_KEY", TEST_API_KEY)
+    get_settings.cache_clear()
+
     app = create_app()
     session = FakeSession()
 
@@ -93,19 +98,44 @@ def client():
         yield c, session, rag
 
     app.dependency_overrides.clear()
+    get_settings.cache_clear()
 
 
-def test_health(client):
+def _auth_headers():
+    return {"X-API-Key": TEST_API_KEY}
+
+
+def test_health_is_public(client):
     c, _, _ = client
     resp = c.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
 
+def test_query_requires_api_key(client):
+    c, _, _ = client
+    resp = c.post(
+        "/rag/query",
+        json={"project_id": "school", "question": "What is photosynthesis?"},
+    )
+    assert resp.status_code == 401
+
+
+def test_query_rejects_wrong_api_key(client):
+    c, _, _ = client
+    resp = c.post(
+        "/rag/query",
+        headers={"X-API-Key": "wrong-key"},
+        json={"project_id": "school", "question": "What is photosynthesis?"},
+    )
+    assert resp.status_code == 401
+
+
 def test_query_endpoint(client):
     c, _, rag = client
     resp = c.post(
         "/rag/query",
+        headers=_auth_headers(),
         json={
             "project_id": "school",
             "question": "What is photosynthesis?",
@@ -119,10 +149,17 @@ def test_query_endpoint(client):
     rag.query.assert_awaited()
 
 
+def test_prompts_require_api_key(client):
+    c, _, _ = client
+    resp = c.get("/prompts")
+    assert resp.status_code == 401
+
+
 def test_create_and_render_prompt(client):
     c, session, _ = client
     create = c.post(
         "/prompts",
+        headers=_auth_headers(),
         json={
             "category": "School",
             "title": "Tutor",
@@ -134,11 +171,11 @@ def test_create_and_render_prompt(client):
     assert create.status_code == 201
     prompt_id = create.json()["id"]
 
-    # Ensure get returns the created prompt
     session._prompt = session.added[0]
 
     rendered = c.post(
         f"/prompts/{prompt_id}/render",
+        headers=_auth_headers(),
         json={"variables": {"topic": "Math", "language": "ar"}},
     )
     assert rendered.status_code == 200

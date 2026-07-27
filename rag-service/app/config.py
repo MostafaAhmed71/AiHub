@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str = "sk-rag-service-change-me"
 
+    # Required for /rag/* and /prompts/* — clients send it as X-API-Key
+    rag_service_api_key: str = ""
+
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gemini/gemini-2.0-flash"
     embedding_dimensions: int = 1536

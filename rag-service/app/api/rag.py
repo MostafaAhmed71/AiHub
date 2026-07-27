@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.auth import verify_api_key
 from app.db.session import get_db
 from app.models.schemas import (
     DocumentOut,
@@ -20,7 +21,7 @@ from app.models.schemas import (
 from app.services.litellm_client import LiteLLMClient
 from app.services.rag import RagService
 
-router = APIRouter(prefix="/rag", tags=["rag"])
+router = APIRouter(prefix="/rag", tags=["rag"], dependencies=[Depends(verify_api_key)])
 
 
 def get_rag_service(settings: Settings = Depends(get_settings)) -> RagService:

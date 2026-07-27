@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import verify_api_key
 from app.db.session import get_db
 from app.models.schemas import (
     PromptCreate,
@@ -18,7 +19,7 @@ from app.models.schemas import (
 )
 from app.services.prompts import PromptService
 
-router = APIRouter(prefix="/prompts", tags=["prompts"])
+router = APIRouter(prefix="/prompts", tags=["prompts"], dependencies=[Depends(verify_api_key)])
 service = PromptService()
 
 
