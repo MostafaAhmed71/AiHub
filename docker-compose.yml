@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aihub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aihub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aihub_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-aihub}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aihub} -d ${POSTGRES_DB:-aihub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: aihub-litellm
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-aihub-master-change-me}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-aihub-salt-change-me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aihub}:${POSTGRES_PASSWORD:-aihub_secret}@postgres:5432/${POSTGRES_DB:-aihub}
+      STORE_MODEL_IN_DB: "True"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  rag-service:
+    build:
+      context: ./rag-service
+      dockerfile: Dockerfile
+    container_name: aihub-rag
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aihub}:${POSTGRES_PASSWORD:-aihub_secret}@postgres:5432/${POSTGRES_DB:-aihub}
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${RAG_SERVICE_VIRTUAL_KEY:-sk-rag-service-change-me}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      CHAT_MODEL: ${CHAT_MODEL:-gemini/gemini-2.0-flash}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      CHUNK_SIZE: ${CHUNK_SIZE:-800}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-120}
+      TOP_K: ${TOP_K:-5}
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - rag_uploads:/data/uploads
+    ports:
+      - "${RAG_SERVICE_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  rag_uploads:

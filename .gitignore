@@ -1,0 +1,17 @@
+.env
+bootstrap-keys.json
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+rag-service/.venv/
+data/
+*.egg-info/
+dist/
+build/
+.DS_Store
+.idea/
+.vscode/
