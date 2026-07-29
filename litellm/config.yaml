@@ -1,0 +1,49 @@
+# AI Hub — LiteLLM Proxy Config (Phase 1)
+# المفاتيح الحقيقية تُقرأ من متغيرات البيئة فقط — المشاريع تستخدم Virtual Keys.
+# مرجع: https://docs.litellm.ai/docs/proxy/configs
+
+model_list:
+  # النموذج الافتراضي (Gemini)
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # مزود بديل للـ Fallback (Groq)
+  - model_name: groq-llama
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+  # Alias موحّد للمشاريع
+  - model_name: chat-default
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # Embeddings (جاهز لـ Phase 2 RAG)
+  - model_name: text-embedding
+    litellm_params:
+      model: gemini/text-embedding-004
+      api_key: os.environ/GEMINI_API_KEY
+
+litellm_settings:
+  drop_params: True
+  num_retries: 3
+  request_timeout: 60
+  telemetry: False
+  # Fallback تلقائي — لا تبنِ منطق rotation بنفسك (حسب PRD §10)
+  fallbacks:
+    - gemini-flash: [groq-llama]
+    - gemini-pro: [groq-llama]
+    - chat-default: [groq-llama]
+  allowed_fails: 3
+  cooldown_time: 30
+
+general_settings:
+  store_model_in_db: True

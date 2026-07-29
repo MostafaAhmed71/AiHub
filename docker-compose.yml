@@ -1,0 +1,53 @@
+# AI Hub — Phase 1: LiteLLM Core Gateway + PostgreSQL
+# بناءً على: https://docs.litellm.ai/docs/proxy/docker_quick_start
+# PRD: AI_HUB_PRD_v3.md
+
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm-database:main-stable
+    container_name: aihub-litellm
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+    command:
+      - "--config=/app/config.yaml"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://aihub:${POSTGRES_PASSWORD}@db:5432/litellm"
+      STORE_MODEL_IN_DB: "True"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    container_name: aihub-postgres
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: aihub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d litellm -U aihub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: aihub_postgres_data
